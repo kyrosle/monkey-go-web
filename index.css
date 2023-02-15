@@ -1,0 +1,29 @@
+html,
+body,
+.body_div {
+    height: 99%;
+    overflow: hidden
+}
+
+.alert {
+    position: absolute;
+    right: 2%;
+    width: 50%;
+    bottom: 2%;
+}
+
+.message_board {
+    font-family: initial;
+    font-size: small;
+    height: 90%;
+    width: 90%;
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow: hidden;
+}
+
+textarea {
+    font-family: initial;
+    overflow: scroll;
+    overflow-x: hidden;
+}
