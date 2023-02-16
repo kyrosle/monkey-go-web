@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     fmt::{Debug, Display},
+    time::Duration,
 };
 
 use gloo_console::log;
@@ -14,7 +15,15 @@ const URL: &str = "/api/code";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SendError {
-    err: JsValue,
+    err: String,
+}
+
+impl SendError {
+    pub fn new<T: Debug>(err: T) -> Self {
+        SendError {
+            err: format!("{err:?}"),
+        }
+    }
 }
 
 impl Display for SendError {
@@ -24,15 +33,12 @@ impl Display for SendError {
 }
 impl Error for SendError {}
 
-impl From<JsValue> for SendError {
-    fn from(value: JsValue) -> Self {
-        Self { err: value }
-    }
-}
-
 pub struct App {
     code: String,
     message: Option<String>,
+    error: Option<String>,
+    show_message: bool,
+    show_error: bool,
 }
 
 pub enum AppMsg {
@@ -41,25 +47,16 @@ pub enum AppMsg {
     RunCode,
     Fetching,
     CodeChanged(String),
+    TurnOffShow,
 }
 
 async fn send_code(url: &'static str, value: String) -> Result<String, SendError> {
-    // let mut opts = RequestInit::new();
-    // opts.method("POST");
-    // opts.mode(web_sys::RequestMode::NoCors);
-    // opts.body(Some(&JsValue::from_str(&value)));
-
-    // let request = Request::new_with_str_and_init(url, &opts)?;
-
-    // let window = gloo::utils::window();
-
-    // let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
-    // let resp: Response = resp_value.dyn_into().unwrap();
-    // log!("", resp.status());
-
-    // let text = JsFuture::from(resp.json()?).await?;
-    let text = Request::post(url).body(value).send().await.unwrap();
-    let text = text.text().await.unwrap();
+    let text = Request::post(url)
+        .body(value)
+        .send()
+        .await
+        .map_err(SendError::new)?;
+    let text = text.text().await.map_err(SendError::new)?;
     Ok(text)
 }
 
@@ -71,24 +68,39 @@ impl Component for App {
         App {
             code: PLACEHOLDER.to_string(),
             message: Some("Info".to_string()),
+            error: Some("Error".to_string()),
+            show_error: false,
+            show_message: false,
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             AppMsg::Response(ret) => {
-                log!("Response: ", &ret);
                 self.message = Some(ret);
+                self.show_message = true;
+                ctx.link().send_future(async {
+                    gloo::timers::future::sleep(Duration::from_secs(3)).await;
+                    AppMsg::TurnOffShow
+                });
                 true
             }
             AppMsg::Fetching => false,
+            AppMsg::TurnOffShow => {
+                self.message = None;
+                self.error = None;
+                self.show_error = false;
+                self.show_message = false;
+                true
+            }
             AppMsg::RunCode => {
                 let code = self.code.to_string();
 
                 ctx.link().send_future(async move {
                     match send_code(URL, code).await {
-                        Ok(ret) => AppMsg::Response(ret),
-                        Err(_) => AppMsg::RunCode,
+                        Ok(ret) if !ret.is_empty() => AppMsg::Response(ret),
+                        Err(e) => AppMsg::ResponseError(e),
+                        _ => AppMsg::ResponseError(SendError::new("Status error")),
                     }
                 });
 
@@ -99,7 +111,15 @@ impl Component for App {
                 self.code = code;
                 false
             }
-            AppMsg::ResponseError(_) => false,
+            AppMsg::ResponseError(e) => {
+                self.error = Some(e.err);
+                self.show_error = true;
+                ctx.link().send_future(async {
+                    gloo::timers::future::sleep(Duration::from_secs(3)).await;
+                    AppMsg::TurnOffShow
+                });
+                true
+            }
         }
     }
 
@@ -107,9 +127,12 @@ impl Component for App {
         let App {
             code: _code,
             message,
+            error,
+            show_error,
+            show_message,
         } = self;
-        let info_active = message.is_some();
-        let message = if info_active { message.clone() } else { None };
+        let message = if *show_message { message.clone() } else { None };
+        let error = if *show_error { error.clone() } else { None };
 
         let run_code = ctx.link().callback(|_| AppMsg::RunCode);
 
@@ -149,12 +172,23 @@ impl Component for App {
                         </div>
                     </div>
                 </div>
-                if info_active {
+                if *show_message {
                     <div class="alert alert-info shadow-lg">
                         <div>
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current flex-shrink-0 w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             <span>
                                 {message.unwrap()}
+                            </span>
+                        </div>
+                    </div>
+                }
+
+                if *show_error {
+                    <div class="alert alert-error shadow-lg">
+                        <div>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current flex-shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span>
+                                {error.unwrap()}
                             </span>
                         </div>
                     </div>
