@@ -4,12 +4,13 @@ use std::{
 };
 
 use gloo_console::log;
+use gloo_net::http::Request;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{HtmlInputElement, Request, RequestInit, Response};
+use web_sys::{HtmlInputElement, RequestInit, Response};
 use yew::prelude::*;
 
-const URL: &str = "http://localhost:8888/code";
+const URL: &str = "/api/code";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SendError {
@@ -43,22 +44,23 @@ pub enum AppMsg {
 }
 
 async fn send_code(url: &'static str, value: String) -> Result<String, SendError> {
-    let mut opts = RequestInit::new();
-    opts.method("POST");
-    opts.mode(web_sys::RequestMode::NoCors);
-    opts.body(Some(&JsValue::from_str(&value)));
+    // let mut opts = RequestInit::new();
+    // opts.method("POST");
+    // opts.mode(web_sys::RequestMode::NoCors);
+    // opts.body(Some(&JsValue::from_str(&value)));
 
-    let request = Request::new_with_str_and_init(url, &opts)?;
+    // let request = Request::new_with_str_and_init(url, &opts)?;
 
-    let window = gloo::utils::window();
+    // let window = gloo::utils::window();
 
-    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
-    let resp: Response = resp_value.dyn_into().unwrap();
-    log!("", resp.status());
+    // let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
+    // let resp: Response = resp_value.dyn_into().unwrap();
+    // log!("", resp.status());
 
-    let text = JsFuture::from(resp.json()?).await?;
-
-    Ok(text.as_string().unwrap())
+    // let text = JsFuture::from(resp.json()?).await?;
+    let text = Request::post(url).body(value).send().await.unwrap();
+    let text = text.text().await.unwrap();
+    Ok(text)
 }
 
 impl Component for App {
